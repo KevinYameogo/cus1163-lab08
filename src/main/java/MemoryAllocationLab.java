@@ -28,58 +28,120 @@ public class MemoryAllocationLab {
     static int successfulAllocations = 0;
     static int failedAllocations = 0;
 
-    /**
-     * TODO 1, 2: Process memory requests from file
-     * <p>
-     * This method reads the input file and processes each REQUEST and RELEASE.
-     * <p>
-     * TODO 1: Read and parse the file
-     *   - Open the file using BufferedReader
-     *   - Read the first line to get total memory size
-     *   - Initialize the memory list with one large free block
-     *   - Read each subsequent line and parse it
-     *   - Call appropriate method based on REQUEST or RELEASE
-     * <p>
-     * TODO 2: Implement allocation and deallocation
-     *   - For REQUEST: implement First-Fit algorithm
-     *     * Search memory list for first free block >= requested size
-     *     * If found: split the block if necessary and mark as allocated
-     *     * If not found: increment failedAllocations
-     *   - For RELEASE: find the process's block and mark it as free
-     *   - Optionally: merge adjacent free blocks (bonus)
-     */
     public static void processRequests(String filename) {
         memory = new ArrayList<>();
 
-        // TODO 1: Read file and initialize memory
-        // Try-catch block to handle file reading
-        // Read first line for total memory size
-        // Create initial free block: new MemoryBlock(0, totalMemory, null)
-        // Read remaining lines in a loop
-        // Parse each line and call allocate() or deallocate()
+        try (BufferedReader br = new BufferedReader(new FileReader(filename))) {
+            
+            String line = br.readLine();
+            if (line != null) {
+                totalMemory = Integer.parseInt(line.trim());
+                memory.add(new MemoryBlock(0, totalMemory, null));
+                System.out.println("Initialized memory: " + totalMemory + " KB\n");
+            }
 
+            
+            while ((line = br.readLine()) != null) {
+                line = line.trim();
+                if (line.isEmpty()) continue;
 
-        // TODO 2: Implement these helper methods
+                String[] parts = line.split("\\s+");
+                
+                if (parts[0].equals("REQUEST")) {
+                    String processName = parts[1];
+                    int size = Integer.parseInt(parts[2]);
+                    allocate(processName, size);
+                } else if (parts[0].equals("RELEASE")) {
+                    String processName = parts[1];
+                    deallocate(processName);
+                }
+            }
+
+        } catch (FileNotFoundException e) {
+            System.err.println("Error: File not found - " + filename);
+        } catch (IOException e) {
+            System.err.println("Error reading file: " + e.getMessage());
+        } catch (NumberFormatException e) {
+            System.err.println("Error parsing number: " + e.getMessage());
+        }
 
     }
 
-    /**
-     * TODO 2A: Allocate memory using First-Fit
-     */
+    
     private static void allocate(String processName, int size) {
-        // Search through memory list
-        // Find first free block where size >= requested size
-        // If found:
-        //   - Mark block as allocated (set processName)
-        //   - If block is larger than needed, split it:
-        //     * Create new free block for remaining space
-        //     * Add it to memory list after current block
-        //   - Increment successfulAllocations
-        //   - Print success message
-        // If not found:
-        //   - Increment failedAllocations
-        //   - Print failure message
+        for (int i = 0; i < memory.size(); i++) {
+            MemoryBlock block = memory.get(i);
+            
+            if (block.isFree() && block.size >= size) {
+                block.processName = processName;
+                
+                if (block.size > size) {
+                    int remainingSize = block.size - size;
+                    int remainingStart = block.start + size;
+            
+                    block.size = size;
+                    
+                    MemoryBlock freeBlock = new MemoryBlock(remainingStart, remainingSize, null);
+                    memory.add(i + 1, freeBlock);
+                }
+                
+                successfulAllocations++;
+                System.out.printf("SUCCESS: Allocated %d KB to %s at position %d\n", 
+                                  size, processName, block.start);
+                return;
+            }
+        }
+        
+        failedAllocations++;
+        System.out.printf("FAILED: Could not allocate %d KB to %s (insufficient memory)\n", 
+                          size, processName);
 
+    }
+    private static void deallocate(String processName) {
+        for (int i = 0; i < memory.size(); i++) {
+            MemoryBlock block = memory.get(i);
+            
+            if (!block.isFree() && block.processName.equals(processName)) {
+                block.processName = null; 
+                System.out.printf("RELEASED: %d KB from %s at position %d\n", 
+                                  block.size, processName, block.start);
+                
+                // Merge with adjacent free blocks
+                mergeAdjacentFreeBlocks(i);
+                return;
+            }
+        }
+        
+        System.out.printf("WARNING: Process %s not found for deallocation\n", processName);
+    }
+
+    private static void mergeAdjacentFreeBlocks(int index) {
+        // Merge with next block if it's free
+        while (index < memory.size() - 1) {
+            MemoryBlock current = memory.get(index);
+            MemoryBlock next = memory.get(index + 1);
+            
+            if (current.isFree() && next.isFree()) {
+                current.size += next.size;
+                memory.remove(index + 1);
+            } else {
+                break;
+            }
+        }
+        
+        // Merge with previous block if it's free
+        while (index > 0) {
+            MemoryBlock current = memory.get(index);
+            MemoryBlock prev = memory.get(index - 1);
+            
+            if (current.isFree() && prev.isFree()) {
+                prev.size += current.size;
+                memory.remove(index);
+                index--;
+            } else {
+                break;
+            }
+        }
     }
 
     public static void displayStatistics() {
